@@ -1,0 +1,3 @@
+[submodule "subprojects/rlottie"]
+	path = subprojects/rlottie
+	url = https://github.com/crizan/rlottie
