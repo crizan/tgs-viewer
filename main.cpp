@@ -36,10 +36,7 @@ std::string extract_gzip(const char* path) {
     return std::string(bytes.begin(), bytes.end());
 }
 
-std::vector<uint32_t> textures;
-std::unique_ptr<rlottie::Animation> animation;
-
-void create_textures(int width, int height) {
+void create_textures(std::unique_ptr<rlottie::Animation>& animation, std::vector<uint32_t>& textures, int width, int height) {
     textures.resize(animation->totalFrame());
     glGenTextures(animation->totalFrame(), textures.data());
 
@@ -60,24 +57,28 @@ void create_textures(int width, int height) {
     }
 }
 
-void delete_textures() {
+void delete_textures(std::vector<uint32_t>& textures) {
     glDeleteTextures(textures.size(), textures.data());
     textures.clear();
 }
 
-bool last_resize = false;
-bool resize = false;
-int w, h;
+struct GLFWUserPointer {
+    bool last_resize = false;
+    bool resize = false;
+    int w, h;
+};
 
-void recreate_textures() {
-    delete_textures();
-    create_textures(w, h);
+
+void recreate_textures(std::unique_ptr<rlottie::Animation>& animation, std::vector<uint32_t>& textures, GLFWUserPointer *user_pointer) {
+    delete_textures(textures);
+    create_textures(animation, textures, user_pointer->w, user_pointer->h);
 }
 
 void resize_callback(GLFWwindow* window, int width, int height) {
-    resize = true;
-    w = width;
-    h = height;
+    GLFWUserPointer *user_pointer = (GLFWUserPointer *)glfwGetWindowUserPointer(window);
+    user_pointer->resize = true;
+    user_pointer->w = width;
+    user_pointer->h = height;
     glViewport(0, 0, width, height);
 }
 
@@ -108,6 +109,9 @@ int main(int argc, char* argv[]) {
     if(argc < 2) return 1;
 
     std::string data = extract_gzip(argv[1]);
+
+    std::vector<uint32_t> textures;
+    std::unique_ptr<rlottie::Animation> animation;
 
     animation = rlottie::Animation::loadFromData(data, "*");
 
@@ -181,7 +185,10 @@ int main(int argc, char* argv[]) {
 
     glUseProgram(program);
 
-    create_textures(512, 512);
+    create_textures(animation, textures, 512, 512);
+
+    GLFWUserPointer user_pointer = {};
+    glfwSetWindowUserPointer(window, &user_pointer);
 
     auto start_time = std::chrono::high_resolution_clock::now();
     float frame_duration = animation->duration() / animation->totalFrame();
@@ -197,13 +204,13 @@ int main(int argc, char* argv[]) {
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);
-        last_resize = resize;
-        resize = false;
+        user_pointer.last_resize = user_pointer.resize;
+        user_pointer.resize = false;
         glfwPollEvents();
-        if(last_resize == true && resize == false) recreate_textures();
+        if(user_pointer.last_resize == true && user_pointer.resize == false) recreate_textures(animation, textures, &user_pointer);
     }
 
-    delete_textures();
+    delete_textures(textures);
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
