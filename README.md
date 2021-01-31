@@ -7,4 +7,5 @@ tgs-viewer /path/to/file
 # Dependencies
 Zlib\
 Rlottie\
-GLFW
+GLFW\
+glad
