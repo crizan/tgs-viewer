@@ -101,7 +101,7 @@ const char* fragment_shader =
 "uniform sampler2D Texture;"
 "void main()"
 "{"
-"   FragColor = texture(Texture, TexCoord);"
+"   FragColor = vec4(texture(Texture, TexCoord).bgr, 1.0);"
 "}"
 ;
 
