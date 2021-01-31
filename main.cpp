@@ -40,7 +40,7 @@ void create_textures(std::unique_ptr<rlottie::Animation>& animation, std::vector
     textures.resize(animation->totalFrame());
     glGenTextures(animation->totalFrame(), textures.data());
 
-    std::vector<uint32_t> buffer(width * height * 4);
+    std::vector<uint32_t> buffer(width * height);
     rlottie::Surface surface(buffer.data(), width, height, width * 4);
 
     int frame = 0;
