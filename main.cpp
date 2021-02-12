@@ -36,43 +36,11 @@ std::string extract_gzip(const char* path) {
     return std::string(bytes.begin(), bytes.end());
 }
 
-void create_textures(std::unique_ptr<rlottie::Animation>& animation, std::vector<uint32_t>& textures, int width, int height) {
-    textures.resize(animation->totalFrame());
-    glGenTextures(animation->totalFrame(), textures.data());
-
-    std::vector<uint32_t> buffer(width * height);
-    rlottie::Surface surface(buffer.data(), width, height, width * 4);
-
-    int frame = 0;
-    for(auto texture : textures) {
-        animation->renderSync(frame++, surface);
-        glBindTexture(GL_TEXTURE_2D, texture);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, buffer.data());
-    }
-}
-
-void delete_textures(std::vector<uint32_t>& textures) {
-    glDeleteTextures(textures.size(), textures.data());
-    textures.clear();
-}
-
 struct GLFWUserPointer {
     bool last_resize = false;
     bool resize = false;
     int w, h;
 };
-
-
-void recreate_textures(std::unique_ptr<rlottie::Animation>& animation, std::vector<uint32_t>& textures, GLFWUserPointer *user_pointer) {
-    delete_textures(textures);
-    create_textures(animation, textures, user_pointer->w, user_pointer->h);
-}
 
 void resize_callback(GLFWwindow* window, int width, int height) {
     GLFWUserPointer *user_pointer = (GLFWUserPointer *)glfwGetWindowUserPointer(window);
@@ -105,15 +73,51 @@ const char* fragment_shader =
 "}"
 ;
 
+struct frame {
+    int width, height;
+    uint32_t texture;
+};
+
+void delete_frames(std::vector<frame>& frames) {
+    for(auto& frame : frames) {
+        glDeleteTextures(1, &frame.texture);
+    }
+}
+
+void render_frame(std::vector<frame>& frames, int width, int height, int num, std::unique_ptr<rlottie::Animation>& animation) {
+    if(frames[num].texture) {
+        glDeleteTextures(1, &frames[num].texture);
+    }
+
+    glGenTextures(1, &frames[num].texture);
+
+    frames[num].width = width;
+    frames[num].height = height;
+
+    std::vector<uint32_t> buffer(width * height);
+    rlottie::Surface surface(buffer.data(), width, height, width * 4);
+
+    animation->renderSync(num, surface);
+
+    glBindTexture(GL_TEXTURE_2D, frames[num].texture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, buffer.data());
+}
+
 int main(int argc, char* argv[]) {
     if(argc < 2) return 1;
 
     std::string data = extract_gzip(argv[1]);
 
-    std::vector<uint32_t> textures;
     std::unique_ptr<rlottie::Animation> animation;
 
     animation = rlottie::Animation::loadFromData(data, "*");
+    std::vector<frame> frames = std::vector<frame>(animation->totalFrame(), {0, 0, 0});
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -185,21 +189,28 @@ int main(int argc, char* argv[]) {
 
     glUseProgram(program);
 
-    create_textures(animation, textures, 512, 512);
-
     GLFWUserPointer user_pointer = {};
     glfwSetWindowUserPointer(window, &user_pointer);
+
+    int width = 512, height = 512;
 
     auto start_time = std::chrono::high_resolution_clock::now();
     float frame_duration = animation->duration() / animation->totalFrame();
     while(!glfwWindowShouldClose(window)) {
+        std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - start_time;
+        double seconds = dur.count();
+
+        int current_frame = (int)(seconds / frame_duration) % animation->totalFrame();
+
+        if(frames[current_frame].width != width || frames[current_frame].height != height) {
+            render_frame(frames, width, height, current_frame, animation);
+        }
+
         glClearColor(0.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - start_time;
-        double seconds = dur.count();
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textures[(int)(seconds / frame_duration) % animation->totalFrame()]);
+        glBindTexture(GL_TEXTURE_2D, frames[current_frame].texture);
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
@@ -207,10 +218,14 @@ int main(int argc, char* argv[]) {
         user_pointer.last_resize = user_pointer.resize;
         user_pointer.resize = false;
         glfwPollEvents();
-        if(user_pointer.last_resize == true && user_pointer.resize == false) recreate_textures(animation, textures, &user_pointer);
+
+        if(user_pointer.last_resize == true && user_pointer.resize == false) {
+            width = user_pointer.w;
+            height = user_pointer.h;
+        }
     }
 
-    delete_textures(textures);
+    delete_frames(frames);
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
