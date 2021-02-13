@@ -4,7 +4,6 @@ project(tgs-viewer)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(BUILD_SHARED_LIBS OFF)
 add_subdirectory(subprojects)
 
 find_package(ZLIB REQUIRED)
@@ -14,4 +13,4 @@ add_executable(tgs-viewer)
 
 target_sources(tgs-viewer PRIVATE main.cpp)
 target_include_directories(tgs-viewer PRIVATE subprojects/rlottie/inc)
-target_link_libraries(tgs-viewer PRIVATE glfw ZLIB::ZLIB rlottie::rlottie glad)
+target_link_libraries(tgs-viewer PRIVATE glfw ZLIB::ZLIB rlottie::rlottie glad ${CMAKE_DL_LIBS})
